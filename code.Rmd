@@ -1,0 +1,955 @@
+---
+title: "Gas sensor array temperature modulation"
+author: "Binome 20:Mame Diarra Toure-Imane Alla"
+date: "11/4/2019"
+output: pdf_document
+fontsize: 8pt
+geometry: margin=1.2cm
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+\vspace{-3em}
+\small
+\color{magenta}\section{Introduction}
+\vspace{-1em}
+\color{black}
+We've seen in our previous corrplot that our target variable (CO) is strongly correlated (negatively) to the variables (R8,....,R14). Our aim here is te determine which sensors are the best to explaint(predict)  the CO concentration (target variable). So we decided after computing our baseline model to proceed to a variable selection in order to select the best sensors. 
+\vspace{-2em}
+\color{magenta}
+\section{I. Baseline model}
+\color{black}
+Our baseline model (CO accroding to all the explanatory variables ) gives us an Residual standard error(RSE) of 4.246 and an adjusted R-squared of 0.5635
+We plot our estimated target with respect to our real target and then superimpose the first bissextrix  (y=x) If the values are  perfectly predicted, we  expect to see points along the y = x line.The plot(see section plot below) shows us that our estimation is quite different from the real values. So we are going to try a small transformation to see if we can obtain a better fit 
+```{r,echo=FALSE,out.height='15%',fig.show='hold'}
+data <- data.frame((read.table("/Users/princessemame/donnéesfixe.txt",sep="\t") ))
+reg_base <- lm(data$CO..ppm.~.,data=data)
+reg_base <- lm(data1$CO..ppm.~.,data=data1)
+X=as.matrix(cbind(rep(1,length(nrow(data))),data[,c(1,3:20)]))
+beta=t(t(reg_base$coefficients))
+Y_hat=X%*%beta
+A <- data.frame(cbind(Y_hat,data$CO..ppm.))
+A <- subset(A, A$X1 >= 0)
+Y_hat <- A$X1
+Y_real <- A$X2
+plot(Y_hat,Y_real,xlab="estimated concentration of CO", ylab="real concentration of CO", main="Regression with raw data")
+abline(0,1,col="red")
+grid()
+summary(reg_base)
+```
+\vspace{-2em}
+\color{magenta}
+\section{Cliffor Tuma Model}
+\color{black}
+According to the paper "Multivariate estimation of the limit of detection by orthogonal partial least squares in temperature-modulated MOX sensors"; For CO detection, the most widely used method is the \textbf{\color{red}Clifford-Tuma model}\color{black}. This empirical model uses a linear relationship between the logarithm of the sensor conductance $g_s$(k$\Omega^-1$)(the conductance is the inverse of the resistance) and the logarithm of the analyte concentration of CO (ppm) log(c).
+$log(g_s)=\alpha + \beta log(c)$
+We transformed our data taking off all O values of CO (because we compute log(c)) then replace the CO colum with Log(CO) and the resitance columns with $log(\frac{1}{R_i})$(which represent the conductances )Our trasformation did not give us a better fit of our estimations to the real values (see section plots below) neither did feature selection or penalized regression.
+```{r,echo=FALSE,out.height='15%',fig.show='hold'}
+nonzerodata <- data1
+data2 <- nonzerodata
+data2[,2] <- log(nonzerodata[,2])
+for (i in 7:14)
+  data2[,i] <- log(1/nonzerodata[,i])
+reg <- lm(CO..ppm.~.,data=data2)
+summary(reg)
+regfor <- step(lm(data1$CO..ppm.~1,data=data1),list(upper=reg),direction = "forward")
+```
+\vspace{-2em}
+\color{magenta}\section{Breakthrough idea}
+\color{black}
+What we have notice in the dataset is that a there a 10 values of concentrations  0 2.22  4.44  6.67  8.89  11.11 13.33 15.56 17.78 20  that have a frequency greater than 300000 . \textbf{We think that those values influence negatively our regression so we got rid of them and used the resulting data to do our regression.}
+The new baseline model  gives us a better superimposition (see section plots below) that we hope will improve with variable selection.
+```{r,include=FALSE}
+data1 <- data.frame((read.table("/Users/princessemame/data1 sans valeur constante",sep=" ") ))
+```
+\vspace{-2em}
+\color{magenta}\section{Plots of ($Y$,$\hat{Y}$)}
+\color{black}
+```{r,echo=FALSE,out.height='15%',fig.show='hold'}
+reg_base <- lm(data1$CO..ppm.~.,data=data1)
+X=as.matrix(cbind(rep(1,length(nrow(data))),data[,c(1,3:20)]))
+beta=t(t(reg_base$coefficients))
+Y_hat=X%*%beta
+A <- data.frame(cbind(Y_hat,data$CO..ppm.))
+A <- subset(A, A$X1 >= 0)
+Y_hat <- A$X1
+Y_real <- A$X2
+plot(Y_hat,Y_real,xlab="estimated concentration of CO", ylab="real concentration of CO", main="Regression with raw data")
+abline(0,1,col="red")
+grid()
+X=as.matrix(cbind(rep(1,length(nrow(data2))),data2[,c(1:1,3:20)]))
+beta=t(t(reg$coefficients))
+Y_hat=X%*%beta
+plot(Y_hat,data2$CO..ppm.,xlab="estimated concentration of CO", ylab="real concentration of CO", main="clifford tuma Regression")
+abline(0,1,col="red")
+grid()
+X=as.matrix(cbind(rep(1,length(nrow(data1))),data1[,c(1:1,3:20)]))
+beta=t(t(reg_base$coefficients))
+Y_hat=X%*%beta
+plot(Y_hat,data1$CO..ppm., xlab="estimated concentration of CO", ylab="real concentration of CO", main="Regression with modified data")
+abline(0,1,col="red")
+grid()
+```
+\color{magenta}\section{Feature Selection}
+\color{black}
+\vspace{-1em}
+Stepwise regression is a method of selecting independent variables in order to choose a set of predictors that have the best relationship with the dependent variable. 
+In the R package the step function uses the AIC criterion for weighing the choices, which takes proper account of the number of parameters fit; at each step an add or drop will be performed that minimizes the AIC score.
+We've performed Stepwise, Forward and backward Selection 
+The backward selection gives us the following model $y= CO (concetration)=  Time + Humidity+ Flow.rate+  Heater.voltage + R1 + R7 + R10 +  R11 + R12 + R13$\newline
+The forward selection gives us the following model $y= CO (concetration)= R10 + Heater.voltage + R4 + Time+ Flow.rate + Humidity + R1+ R11+ R13 + R12 + R7 + R8$\newline
+The stepwise selection gives us the following model $y= CO (concetration)= R10 + Heater.voltage + Time + Flow.rate + Humidity + R1 + R11 + R13 + R12+ R7 + R8$\newline
+\color{red}\textbf{the six sensors R1, R7, R10, R11, R12, R13 have been selected by all 3 methods}
+\color{black}
+```{r,include=FALSE}
+regfor <- step(lm(data1$CO..ppm.~1,data=data1),list(upper=reg_base),direction = "forward")
+regboth <- step(lm(data1$CO..ppm.~1,data=data1),list(upper=reg_base),direction = "both")
+X=as.matrix(cbind(rep(1,length(nrow(data1))),data1[,c(16,6,10,1,5,3,7,17,19,18,13,14)]))
+beta=t(t(regfor$coefficients))
+Y_hat=X%*%beta
+#plot(Y_hat,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+#abline(0,1,col="red")
+#grid()
+regboth <- step(lm(data1$CO..ppm.~1,data=data1),list(upper=reg_base),direction = "both")
+regbackward <- step(reg_base,direction = "backward")
+X=as.matrix(cbind(rep(1,length(nrow(data1))),data1[,sort(c(7,17,18,13,19,3,16,5,6,1))]))
+beta=t(t(regbackward$coefficients))
+Y_hat=X%*%beta
+plot(Y_hat,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+```
+```{r}
+X=as.matrix(cbind(rep(1,length(nrow(data1))),data1[,c(1:1,3:20)]))
+beta=t(t(reg_base$coefficients))
+Y_hat=X%*%beta
+plot(Y_hat,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+```
+\vspace{-2em}
+\color{magenta}\section{Penalized regression methods}
+\color{black}
+\color{red}\subsection{Ridge regression }\color{black}
+Ridge regression is a parsimonious model which performs L2 regularization. The L2 regularization adds a penality equivalent to the square of the maginitude of regression coefficients and tries to minimize them.Ridge regression does a proportional shrinkage and handles collinear variables but it does not perform a selection.We  use the cv.glmnet() function available in the glmnet package to find the best $\lambda$. This function does k-fold cross-validation for glmnet, produces a plot, and returns a value for the best lambda value which is equal in our case to $\lambda_{ridge}=0.1300923$. \textbf{The variables times, R2, R3, R5, R6, R8 have strongly penelized coefficients}. It could mean  that  those variables are not important to explain our target. 
+```{r,include=FALSE}
+library(glmnet)
+X_ridge=as.matrix(data1[,c(1:1,3:20)])
+Y_ridge=as.matrix(data1$CO..ppm.)
+RidgeMod <- glmnet(X_ridge, Y_ridge,alpha=0, nlambda=1000,lambda.min.ratio=0.0001)
+```
+```{r, include=FALSE}
+CvRidgeMod=cv.glmnet(X_ridge,Y_ridge,alpha=0,nlambda=100,lambda.min.ratio=0.0001)
+best.lambda_ridge=CvRidgeMod$lambda.min 
+best.lambda_ridge
+Ridge <- predict(RidgeMod, s=best.lambda_ridge, type="coefficients")
+stepwise <- regboth$coefficient
+```
+```{r,include=FALSE}
+
+A1 <- t(t(as.vector(A)))
+X <- as.matrix(cbind(rep(1,length(nrow(data1))),X_ridge))
+Y_hat1 <- X%*%A1
+plot(Y_hat1,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+```
+\vspace{-2em}
+\color{red}\subsection{Lasso regression }
+\color{black}
+Lasso regression find a parsimonious model which performs L1 regularization. The L1 regularization adds a penality equivalent to the absolute of the maginitude of regression coefficients and tries to minimize them 
+Lasso translates each coefficient by a constant factor $\lambda$, truncating at zero. This is called "soft thresholding".We use the cv.glmnet.This function does k-fold cross-validation for glmnet, produces a plot, and returns a value for the best lambda value which is in our case $\lambda_{lasso}=0.001314899$
+When we performed Lasso regression\textbf{ 
+we see that  the variables R3, R6 and R9 have been dropped}. The Lasso regression penalty term, using the absolute value (rather than the square, as in the regression Ridge), forces some coefficients to be exactly equal to zero, if $\lambda$ is large enough. In practice, Lasso automatically performs a real selection of variables.
+```{r, include=FALSE}
+X_lasso=as.matrix(data1[,c(1,3:20)])
+Y_lasso=as.matrix(data1$CO..ppm.)
+LassoMod <- glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+#plot(LassoMod,xvar="norm",label=TRUE)
+CvLassoMod <- cv.glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+
+best.lambda <- CvLassoMod$lambda.min
+best.lambda
+
+Lasso <- predict(LassoMod, s=best.lambda, type="coefficients")
+C
+```
+```{r,include=FALSE}
+
+A1 <- t(t(as.vector(A)))
+X <- as.matrix(cbind(rep(1,length(nrow(data1))),X_lasso))
+Y_hat1 <- X%*%A1
+plot(Y_hat1,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+
+
+```
+\vspace{-1em}
+\color{red}\subsection{Elastic Net}
+\color{black}
+ElasticNet is a hybrid of both Lasso and Ridge regression. It is trained with both L1-norm and L2-norm prior as regularizer. Like LASSO regularization it results in sparse solutions, however it also has the advantage of performing well with highly correlated variables like ridge regularization. Elastic net is used by solving the following optimization problem: $min_x \left\|y-Ax\right\|+\lambda_1\left\|x\right\|_1+\lambda_2\left\|x\right\|_2$
+Ultimately, we can say that ElasticNet balance the trade-off bias-variance with the choice of $\lambda$. It assumes that part of the coefficients are zero, or at least not significant. When computed, the Elastic Net regularization dropped the variables R3 and R6 and other variables like R4 and R9 have really penelized coefficients. 
+As for the other regularized methods the function cv.glmnet compute a cross validation to determine the best lambda which is equal to $\lambda_{Elastic Net}= 0.002663069$
+```{r,include=FALSE}
+X_EN=as.matrix(data1[,c(1,3:20)])
+Y_EN=as.matrix(data1$CO..ppm.)
+ENMod <- glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+CvENMod <- cv.glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+best.lambda <- CvENMod$lambda.min
+best.lambda
+EN <- predict(ENMod, s=best.lambda, type="coefficients")
+
+```
+```{r,include =FALSE}
+A1 <- t(t(as.vector(A)))
+X <- as.matrix(cbind(rep(1,length(nrow(data1))),X_EN))
+Y_hat1 <- X%*%A1
+plot(Y_hat1,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+```
+\section{KNN regression}
+k-Nearest Neighbors (k-NN) is an algorithm that is useful for making classifications/predictions when there are potential non-linear boundaries separating classes or values of interest. Conceptually, k-NN examines the classes/values of the points around it (i.e., its neighbors) to determine the value of the point of interest. The majority or average value will be assigned to the point of interest.
+A simple implementation of KNN regression is to calculate the average of the numerical target of the K nearest neighbors.  Another approach uses an inverse distance weighted average of the K nearest neighbors. KNN regression uses the same distance functions as KNN classification.
+```{r}
+
+	
+ 
+par(mfrow=(c(1,3)))
+knene <- FNN::knn.reg(data1[,c(1:1,3:20)], y=data1$CO..ppm.,k=5, algorithm=c("kd_tree"))
+Y_hat <- knene$pred
+
+#plot(Y_hat,data1$CO..ppm.)
+#abline(0,1,col="red")
+knene1 <- FNN::knn.reg(data1[,c(1:1,3:20)], y=data1$CO..ppm.,k=15, algorithm=c("kd_tree"))
+Y_hat <- knene1$pred
+
+#plot(Y_hat,data1$CO..ppm.)
+#abline(0,1,col="red")
+
+knene2 <- FNN::knn.reg(data1[,c(1:1,3:20)], y=data1$CO..ppm.,k=10, algorithm=c("kd_tree"))
+Y_hat <- knene2$pred
+
+plot(Y_hat,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ",main="KNN Regression")
+abline(0,1,col="red")
+```
+```{r}
+stepwise <- as.matrix(stepwise)
+library(knitr)
+coeff <- data.frame(matrix(cbind(t(Ridge),t(Lasso),t(EN)),nrow=length(EN),ncol=3))
+```
+
+
+\vspace{-2em}\color{magenta}\section{Group Lasso} 
+\color{red}\textbf{In this experiment the sensors come from two specific fabricants: R1-R7 correspond to FIGARO TGS 3870 A-04 sensors, whereas R8-R14 correspond to FIS SB-500-12 units.} The group Lasso method should be appropriate to decide which group give a best prediction of CO concentration.\color{black}
+In 2006, Yuan and Lin introduced the group lasso in order to allow predefined groups of covariates to be selected \textbf{into or out of a model together}, so that all the members of a particular group are either included or excluded
+ The objective function for the group lasso is a natural generalization of the standard lasso objective $${\min _{\beta \in \mathbb {R} ^{p}}\left\{\left\|y-\sum _{j=1}^{J}X_{j}\beta _{j}\right\|_{2}^{2}+\lambda \sum _{j=1}^{J}\|\beta _{j}\|_{K_{j}}\right\}}$$
+ where the design matrix $X$and covariate vector $\beta$  have been replaced by a collection of design matrices $X_{j}$ and covariate vectors $\beta _{j}$, one for each of the J groups. Additionally, the penalty term is now a sum over $\l ^{2} $norms defined by the positive definite matrices  ${ K_{j}}$. If each covariate is in its own group and ${K_{j}=I}$, then this reduces to the standard lasso, while if there is only a single group and ${K_{1}=I},$ it reduces to ridge regression.We use the function gglasso of the R package gglasso in order to proceed to group lasso regualrizatioon. We considered 7 groups. The first 5 groups corespond to the first five expalnatory variables (except of CO) the 6th group is composed of R1,...R7 and the 7th group of R8,...,R14.
+```{r}
+library(gglasso)
+group1=c(1,2,3,4,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7)
+X_gl=as.matrix(data1[,c(1,3:20)])
+Y_gl=as.matrix(data1$CO..ppm.)
+GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 150,)
+cvGroupLasso <- cv.gglasso(X_gl,Y_gl,group1)
+best.lambda <-cvGroupLasso$lambda.min
+A <- coef.gglasso(GroupLasso,s=best.lambda)
+A <- data.frame(A)
+colnames(A ) <- c("gglasso")
+B <- subset(A,A$gglasso!=0)
+
+```
+The group lasso regularization removed the group 2 (humidity),3 (temperature), 4(flow rate),5 (heater_voltage),and 6 (R1....R7).This could mean that the best sensors are in the group 7 (from the second fabricant)
+```{r, include=FALSE}
+A1 <- t(t(as.vector(A)))
+X <- as.matrix(cbind(rep(1,length(nrow(data1))),X_gl))
+Y_hat1 <- X%*%A1
+plot(Y_hat1,data1$CO..ppm.,xlab=" Real CO concentration", ylab="Estimated CO concentration ")
+abline(0,1,col="red")
+grid()
+```
+\vspace{-2em}
+\color{magenta}\section{Cross Validation in order to choose the best model }
+\color{black}
+For each model,we split randomly the initial dataset in two dataframes containing $75\%$ of the observations(The 'Training' data base) and $25\%$ of the remaining observations(The 'Test' data set).We use the training data set to estimate the parameters of the model.Given the previous model,we use the test data set to compute the RMSE to evaluate the performances of the model.By repeating the two first steps 20 times,we compare the results obtained with the help of 6 boxplots.
+```{r,include=FALSE}
+RMSE_ridge=c()
+residu_ridge=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain[,2],alpha=0,nlambda=100,lambda.min.ratio=0.0001)
+  
+  best_lambda=modreg1$lambda.min
+  
+  best_ridge=glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain$CO..ppm.,lambda=best_lambda)
+  
+  pred=predict(best_ridge, s = best_lambda, newx= as.matrix(TabTest[,c(1:1,3:20)]))
+  Y_predicted=data.frame(pred)
+  Y_reel=TabTest$CO..ppm.
+  residu_ridge[,i]=Y_reel-t(Y_predicted)
+  RMSE_ridge[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+```
+
+```{r,include=FALSE}
+RMSE1=c()
+RMSE_stepwise=c()
+residu_stepwise=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  modreg1=lm(TabTrain$CO..ppm.~ R10..MOhm. + Heater.voltage..V. + Time..s. + 
+    Flow.rate..mL.min. + Humidity...r.h.. + R1..MOhm. + R11..MOhm. + 
+    R13..MOhm. + R12..MOhm. + R7..MOhm. + R8..MOhm. ,data=TabTrain)
+  Y_test=predict(modreg1,newdata=TabTest[,c(1:1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_stepwise[,i]=Y_reel-Y_predicted
+  RMSE_stepwise[i]=sqrt(((sum(residu_stepwise[,i])**2))/length(TabTest))
+}
+```
+
+
+```{r}
+RMSE1=c()
+RMSE_knn=c()
+residu_knn=matrix(nrow =2870, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+ knene2 <- FNN::knn.reg(TabTrain[,c(1:1,3:20)], y=TabTrain$CO..ppm.,k=25, algorithm=c("kd_tree"))
+Y_hat <- knene2$pred
+  Y_reel=TabTrain$CO..ppm.
+  residu_knn[,i]=Y_reel-Y_hat
+  RMSE_knn[i]=sqrt(((sum(residu_knn[,i])**2))/length(TabTest))
+}
+```
+
+```{r,,include=FALSE}
+RMSE_gl=c()
+residu_gl=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  group1=c(1,2,3,4,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7)
+  X_gl=as.matrix(data1[,c(1,3:20)])
+  Y_gl=as.matrix(data1$CO..ppm.)
+  GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 150,)
+  cvGroupLasso <-  cv.gglasso(X_gl,Y_gl,group1)
+  best.lambda <-cvGroupLasso$lambda.min
+  A <- coef.gglasso(GroupLasso,s=best.lambda)
+  A1 <- t(t(as.vector(A)))
+  Xtest <- as.matrix(TabTest[,c(1,3:20)])
+  X <- as.matrix(cbind(rep(1,length(nrow(TabTest))),Xtest))
+  Y_predicted <- X%*%A1
+  Y_reel=TabTest$CO..ppm.
+  residu_gl[,i]=Y_reel-t(Y_predicted)
+  RMSE_gl[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE2=c()
+RMSE_bkwrd=c()
+residu_bkwrd=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  modreg1=lm(TabTrain$CO..ppm.~ Time..s. + Humidity...r.h.. + Flow.rate..mL.min. + 
+    Heater.voltage..V. + R1..MOhm. + R7..MOhm. + R10..MOhm. + 
+    R11..MOhm. + R12..MOhm. + R13..MOhm. ,data=TabTrain)
+  Y_test=predict(modreg1,newdata=TabTest[,c(1:1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_bkwrd[,i]=Y_reel-Y_predicted
+  RMSE_bkwrd[i]=sqrt(((sum(residu_bkwrd[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE_forward=c()
+residu_forward=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  
+  modreg1=lm(TabTrain$CO..ppm.~ R10..MOhm. + Heater.voltage..V. + R4..MOhm. + Time..s. + Flow.rate..mL.min. + Humidity...r.h.. + R1..MOhm. +R11..MOhm. + R13..MOhm. + R12..MOhm. + R7..MOhm. + R8..MOhm.,data=TabTrain)
+  
+  Y_test=predict(modreg1,newdata=TabTest[,c(1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_forward[,i]=Y_reel-Y_predicted
+  RMSE_forward[i]=sqrt(((sum(residu_forward[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE_lasso=c()
+residu_lasso=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha=1, lambda=lambdaseq)
+  best_lam <- modreg1$lambda.min
+  lasso_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha = 1, lambda = best_lam)
+  Y_test<- predict(lasso_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_lasso[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_lasso[i]=sqrt(((sum(residu_lasso[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE_EN=c()
+residu_EN=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data1[train_ind,] 
+  TabTest=data1[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,nlambda=100,lambda.min.ratio=0.0001)
+  best_lam <- modreg1$lambda.min
+  EN_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,  lambda = best_lam)
+  Y_test<- predict(EN_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_EN[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_EN[i]=sqrt(((sum(residu_EN[,i])**2))/length(TabTest))
+}
+```
+\tiny
+```{r}
+1
+```
+```{r,include=FALSE,out.height='15%',fig.show='hold',out.width= "65%"}
+group=c("forward","stepwise","Lasso","Ridge","ElasticNet","GLasso","K")
+```
+\vspace{-2em}
+```{r,echo=FALSE,out.width= "65%"}
+boxplot(RMSE_forward,RMSE_stepwise,RMSE_lasso,RMSE_ridge,RMSE_EN,RMSE_gl,names=group,notch=F, outlier.color = "red", outlier.shape = 8, outlier.size = 4, col=(c("gold","darkgreen","purple","pink","blue","red")))
+grid()
+```
+\small
+According to these boxplot it is hard to tell which model is the best. Indeed the boxplot are all quite the same and adding to that the computed RMSE foreach model s really high with respoct to the vales in our dataset.
+
+\section{clifford tuma method applied on the modified data set}
+```{r}
+reg_base1 <- lm(data1$CO..ppm.~.,data=data2)
+X=as.matrix(cbind(rep(1,length(nrow(data))),data2[,c(1,3:7)]))
+beta=t(t(reg_base1$coefficients))
+Y_hat=X%*%beta
+A <- data.frame(cbind(Y_hat,data$CO..ppm.))
+A <- subset(A, A$X1 >= 0)
+Y_hat <- A$X1
+Y_real <- A$X2
+plot(Y_hat,Y_real,xlab="estimated concentration of CO", ylab="real concentration of CO", main="Regression with raw data")
+abline(0,1,col="red")
+grid()
+summary(reg_base1)
+```
+#elastic Net
+```{r}
+library(glmnet)
+X_EN=as.matrix(data1[,c(1,3:6,16:19)])
+Y_EN=as.matrix(data1$CO..ppm.)
+ENMod <- glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+CvENMod <- cv.glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+best.lambda <- CvENMod$lambda.min
+best.lambda
+A <- predict(ENMod, s=best.lambda, type="coefficients")
+A
+```
+
+```{r}
+X_lasso=as.matrix(data1[,c(1,3:6,16:20)])
+Y_lasso=as.matrix(data1$CO..ppm.)
+LassoMod <- glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+#plot(LassoMod,xvar="norm",label=TRUE)
+CvLassoMod <- cv.glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+
+best.lambda <- CvLassoMod$lambda.min
+best.lambda
+
+A <- predict(LassoMod, s=best.lambda, type="coefficients")
+A
+```
+#essaie regression polynomiale 
+```{r}
+X=as.matrix(data1[,c(1,3:20)])
+#fit3b <- lm(data1$CO..ppm. ~ poly(X,1,raw=TRUE) +poly(X, 2, raw=TRUE))
+```
+```{r}
+plot(data1$Time..s.,data1$Heater.voltage..V.)
+```
+```{r}
+library(glmnet)
+X_lasso=as.matrix(data2[,c(1,3:20)])
+Y_lasso=as.matrix(data2$CO..ppm.)
+LassoMod <- glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+#plot(LassoMod,xvar="norm",label=TRUE)
+CvLassoMod <- cv.glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+
+best.lambda <- CvLassoMod$lambda.min
+best.lambda
+
+A <- predict(LassoMod, s=best.lambda, type="coefficients")
+A1 <- t(t(as.vector(A)))
+X <- as.matrix(cbind(rep(1,length(nrow(data2))),X_lasso))
+Y_hat1 <- X%*%A1
+M <- data.frame(cbind(Y_hat1,data2$CO..ppm.))
+N <- subset(M, M$X2 >= 0)
+Y_hat <- N$X1
+Y_real <- N$X2
+plot(Y_hat,Y_real,xlab="estimated concentration of CO", ylab="real concentration of CO", main="Regression with raw data")
+abline(0,1,col="red")
+grid()
+```
+#groupLasso 
+```{r}
+library(gglasso)
+group1=c(1,2,3,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6)
+X_gl=as.matrix(data1[,c(1,3:20)])
+Y_gl=as.matrix(data1$CO..ppm.)
+GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 100,)
+cvGroupLasso <- cv.gglasso(X_gl,Y_gl,group1)
+best.lambda <-cvGroupLasso$lambda.min
+A <- coef.gglasso(GroupLasso,s=best.lambda)
+A
+```
+
+#cross validation train and testing 
+```{r,include=FALSE}
+RMSE_ridge=c()
+residu_ridge=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain[,2],alpha=0,nlambda=100,lambda.min.ratio=0.0001)
+  
+  best_lambda=modreg1$lambda.min
+  
+  best_ridge=glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain$CO..ppm.,lambda=best_lambda)
+  
+  pred=predict(best_ridge, s = best_lambda, newx= as.matrix(TabTest[,c(1:1,3:20)]))
+  Y_predicted=data.frame(pred)
+  Y_reel=TabTest$CO..ppm.
+  residu_ridge[,i]=Y_reel-t(Y_predicted)
+  RMSE_ridge[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+```
+
+```{r,include=FALSE}
+RMSE_stepwise=c()
+residu_stepwise=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=lm(TabTrain$CO..ppm.~ R10..MOhm. + Heater.voltage..V. + Time..s. + 
+    Flow.rate..mL.min. + Humidity...r.h.. + R1..MOhm. + R11..MOhm. + 
+    R13..MOhm. + R12..MOhm. + R7..MOhm. + R8..MOhm. ,data=TabTrain)
+  Y_test=predict(modreg1,newdata=TabTest[,c(1:1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_stepwise[,i]=Y_reel-Y_predicted
+  RMSE_stepwise[i]=sqrt(((sum(residu_stepwise[,i])**2))/length(TabTest))
+}
+
+```
+```{r,,include=FALSE}
+library(gglasso)
+RMSE_gl=c()
+residu_gl=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data1))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  group1=c(1,2,3,4,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7)
+  X_gl=as.matrix(data1[,c(1,3:20)])
+  Y_gl=as.matrix(data1$CO..ppm.)
+  GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 150,)
+  cvGroupLasso <-  cv.gglasso(X_gl,Y_gl,group1)
+  best.lambda <-cvGroupLasso$lambda.min
+  A <- coef.gglasso(GroupLasso,s=best.lambda)
+  A1 <- t(t(as.vector(A)))
+  Xtest <- as.matrix(TabTest[,c(1,3:20)])
+  X <- as.matrix(cbind(rep(1,length(nrow(TabTest))),Xtest))
+  Y_predicted <- X%*%A1
+  Y_reel=TabTest$CO..ppm.
+  residu_gl[,i]=Y_reel-t(Y_predicted)
+  RMSE_gl[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE2=c()
+RMSE_bkwrd=c()
+residu_bkwrd=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data1)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=lm(TabTrain$CO..ppm.~ Time..s. + Humidity...r.h.. + Flow.rate..mL.min. + 
+    Heater.voltage..V. + R1..MOhm. + R7..MOhm. + R10..MOhm. + 
+    R11..MOhm. + R12..MOhm. + R13..MOhm. ,data=TabTrain)
+  Y_test=predict(modreg1,newdata=TabTest[,c(1:1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_bkwrd[,i]=Y_reel-Y_predicted
+  RMSE_bkwrd[i]=sqrt(((sum(residu_bkwrd[,i])**2))/length(TabTest))
+}
+```
+
+```{r,include=FALSE}
+RMSE_forward=c()
+residu_forward=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  
+  modreg1=lm(TabTrain$CO..ppm.~ R10..MOhm. + Heater.voltage..V. + R4..MOhm. + Time..s. + Flow.rate..mL.min. + Humidity...r.h.. + R1..MOhm. +R11..MOhm. + R13..MOhm. + R12..MOhm. + R7..MOhm. + R8..MOhm.,data=TabTrain)
+  
+  Y_test=predict(modreg1,newdata=TabTest[,c(1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_forward[,i]=Y_reel-Y_predicted
+  RMSE_forward[i]=sqrt(((sum(residu_forward[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE_lasso=c()
+residu_lasso=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha=1, lambda=lambdaseq)
+  best_lam <- modreg1$lambda.min
+  lasso_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha = 1, lambda = best_lam)
+  Y_test<- predict(lasso_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_lasso[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_lasso[i]=sqrt(((sum(residu_lasso[,i])**2))/length(TabTest))
+}
+```
+```{r,include=FALSE}
+RMSE_EN=c()
+residu_EN=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,nlambda=100,lambda.min.ratio=0.0001)
+  best_lam <- modreg1$lambda.min
+  EN_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,  lambda = best_lam)
+  Y_test<- predict(EN_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_EN[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_EN[i]=sqrt(((sum(residu_EN[,i])**2))/length(TabTest))
+}
+```
+\tiny
+```{r}
+1
+```
+```{r,include=FALSE,out.height='15%',fig.show='hold',out.width= "65%"}
+group=c("forward","stepwise","Lasso","Ridge","ElasticNet","GLasso","KNN")
+```
+\vspace{-2em}
+```{r,echo=FALSE,out.width= "65%"}
+boxplot(RMSE_forward,RMSE_stepwise,RMSE_lasso,RMSE_ridge,RMSE_EN,RMSE_gl,RMSE_knn,names=group,notch=F, outlier.color = "red", outlier.shape = 8, outlier.size = 4, col=(c("gold","darkgreen","purple","pink","blue","red","deeppink")))
+grid()
+```
+```{r}
+library(tidyverse)
+set.seed(20)
+cluster_co=kmeans(t(data2[,c(1,3:20)]), 6, nstart = 20)
+cluster_co$cluster
+
+```
+##Second Approach
+
+#Clifford Tuma Model(Applied to data1(modified data))
+```{r}
+data1=data.frame(read.table(file="data1.txt"))
+nonzerodata <- data1
+data2 <- nonzerodata
+data2[,2] <- log(nonzerodata[,2])
+for (i in 7:14)
+  data2[,i] <- log(1/nonzerodata[,i])
+```
+#Baseline model
+```{r}
+reg2 <- lm(CO..ppm.~.,data=data2)
+summary(reg2)
+
+X=as.matrix(cbind(rep(1,length(nrow(data2))),data2[,c(1:1,3:20)]))
+beta=t(t(reg2$coefficients))
+Y_hat1=X%*%beta
+M <- data.frame(cbind(Y_hat1,data2$CO..ppm.))
+N <- subset(M, M$X2 >= 0)
+Y_hat <- N$X1
+Y_real <- N$X2
+plot(Y_hat,Y_real,xlab="Estimated concentration of CO", ylab="Real concentration of CO", main="Clifford Tuma Regression")
+abline(0,1,col="red")
+grid()
+```
+#Feature Selection(Stepwise)
+```{r}
+regboth <- step(lm(CO..ppm.~1,data=data2),list(upper=reg2),direction = "both")
+```
+```{r}
+A<-data.frame(regboth$coefficients)
+colnames(A)<-c("stepwise")
+knitr::kable(A)
+```
+#Ridge Selection
+```{r}
+library(glmnet)
+X_ridge=as.matrix(data2[,c(1:1,3:20)])
+Y_ridge=as.matrix(data2$CO..ppm.)
+RidgeMod <- glmnet(X_ridge, Y_ridge,alpha=0, nlambda=1000,lambda.min.ratio=0.0001)
+
+CvRidgeMod=cv.glmnet(X_ridge,Y_ridge,alpha=0,nlambda=100,lambda.min.ratio=0.0001)
+best.lambda_ridge=CvRidgeMod$lambda.min 
+A_ridge <- coef(RidgeMod, s=best.lambda_ridge)
+colnames(A_ridge)<-c("Ridge")
+A_ridge
+
+```
+#Lasso Ridge
+```{r}
+X_lasso=as.matrix(data2[,c(1,3:20)])
+Y_lasso=as.matrix(data2$CO..ppm.)
+LassoMod <- glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+#plot(LassoMod,xvar="norm",label=TRUE)
+CvLassoMod <- cv.glmnet(X_lasso, Y_lasso, alpha=1, nlambda=1000,lambda.min.ratio=0.0001)
+
+best.lambda <- CvLassoMod$lambda.min
+
+A_lasso <- coef(LassoMod, s=best.lambda)
+colnames(A_lasso)<-c("Lasso")
+
+```
+#ElasticNet Regression
+```{r}
+library(glmnet)
+X_EN=as.matrix(data2[,c(1,3:20)])
+Y_EN=as.matrix(data2$CO..ppm.)
+ENMod <- glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+CvENMod <- cv.glmnet(X_EN, Y_EN, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+best.lambda <- CvENMod$lambda.min
+best.lambda
+A_EN <- coef(ENMod, s=best.lambda)
+colnames(A_EN)<-c("ElasticNet")
+B<-cbind(as.matrix(A_ridge),as.matrix(A_lasso),as.matrix(A_EN))
+knitr::kable(B)
+```
+#Glasso
+```{r}
+library(gglasso)
+group1=c(1,2,3,4,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7)
+X_gl=as.matrix(data2[,c(1,3:20)])
+Y_gl=as.matrix(data2$CO..ppm.)
+GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 150,)
+cvGroupLasso <- cv.gglasso(X_gl,Y_gl,group1)
+best.lambda <-cvGroupLasso$lambda.min
+A <- coef.gglasso(GroupLasso,s=best.lambda)
+A<-data.frame(A)
+colnames(A)<-c("gglasso")
+#B<-subset(A,A$gglasso!=0)
+knitr::kable(A)
+```
+#KNN
+```{r}
+
+knene <- FNN::knn.reg(data2[,c(1:1,3:20)], y=data2$CO..ppm.,k=10, algorithm=c("kd_tree"))
+Y_hat <- knene$pred
+A <- data.frame(cbind(Y_hat,data2$CO..ppm.))
+colnames(A)<-c("Y_hat","data2$CO..ppm.")
+A <- subset(A, A$Y_hat >= 0 & A$`data2$CO..ppm.`>=0)
+Y_hat <- A$Y_hat
+Y_real <- A$`data2$CO..ppm.`
+plot(Y_hat,Y_real,xlab=" Real CO concentration", ylab="Estimated CO concentration ",main="KNN Regression")
+abline(0,1,col="red")
+grid()
+```
+
+#Cross Validation(Trai/test)
+```{r}
+RMSE1=c()
+RMSE_stepwise=c()
+residu_stepwise=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=lm(TabTrain$CO..ppm.~ R10..MOhm. + Time..s. + Flow.rate..mL.min. + Humidity...r.h.. + 
+    R1..MOhm. + Heater.voltage..V. + R12..MOhm. + R14..MOhm. + 
+    R2..MOhm. ,data=TabTrain)
+  Y_test=predict(modreg1,newdata=TabTest[,c(1:1,3:20)],interval="confidence")
+  Y_predicted=data.frame(Y_test)$fit
+  Y_reel=TabTest$CO..ppm.
+  residu_stepwise[,i]=Y_reel-Y_predicted
+  RMSE_stepwise[i]=sqrt(((sum(residu_stepwise[,i])**2))/length(TabTest))
+}
+
+RMSE_ridge=c()
+residu_ridge=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain[,2],alpha=0,nlambda=100,lambda.min.ratio=0.0001)
+  
+  best_lambda=modreg1$lambda.min
+  
+  best_ridge=glmnet(as.matrix(TabTrain[,c(1:1,3:20)]),TabTrain$CO..ppm.,lambda=best_lambda)
+  
+  pred=predict(best_ridge, s = best_lambda, newx= as.matrix(TabTest[,c(1:1,3:20)]))
+  Y_predicted=data.frame(pred)
+  Y_reel=TabTest$CO..ppm.
+  residu_ridge[,i]=Y_reel-t(Y_predicted)
+  RMSE_ridge[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+
+RMSE_lasso=c()
+residu_lasso=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha=1, lambda=lambdaseq)
+  best_lam <- modreg1$lambda.min
+  lasso_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm., alpha = 1, lambda = best_lam)
+  Y_test<- predict(lasso_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_lasso[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_lasso[i]=sqrt(((sum(residu_lasso[,i])**2))/length(TabTest))
+}
+RMSE_EN=c()
+residu_EN=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  lambdaseq <- seq(0,50,0.01)
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  modreg1=cv.glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,nlambda=100,lambda.min.ratio=0.0001)
+  best_lam <- modreg1$lambda.min
+  EN_best <- glmnet(as.matrix(TabTrain[,c(1,3:20)]), TabTrain$CO..ppm.,alpha=0.5,  lambda = best_lam)
+  Y_test<- predict(EN_best, s = best_lam, newx = as.matrix(TabTest[,c(1,3:20)]))
+  Y_predicted=data.frame(Y_test)
+  Y_reel=TabTest$CO..ppm.
+  residu_EN[,i]=(Y_reel)-t(Y_predicted)
+  RMSE_EN[i]=sqrt(((sum(residu_EN[,i])**2))/length(TabTest))
+}
+RMSE_gl=c()
+residu_gl=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(200*i+10)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  group1=c(1,2,3,4,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7)
+  X_gl=as.matrix(TabTrain[,c(1,3:20)])
+  Y_gl=as.matrix(TabTrain$CO..ppm.)
+  GroupLasso <- gglasso(X_gl,Y_gl,group1,nlambda = 150,)
+  cvGroupLasso <-  cv.gglasso(X_gl,Y_gl,group1)
+  best.lambda <-cvGroupLasso$lambda.min
+  A <- coef.gglasso(GroupLasso,s=best.lambda)
+  A1 <- t(t(as.vector(A)))
+  Xtest <- as.matrix(TabTest[,c(1,3:20)])
+  X <- as.matrix(cbind(rep(1,length(nrow(TabTest))),Xtest))
+  Y_predicted <- X%*%A1
+  Y_reel=TabTest$CO..ppm.
+  residu_gl[,i]=Y_reel-t(Y_predicted)
+  RMSE_gl[i]=sqrt(((sum(residu_ridge[,i])**2))/length(TabTest))
+}
+```
+```{r}
+library(FNN)
+set.seed(42)
+RMSE1=c()
+RMSE_KNN=c()
+residu_KNN=matrix(nrow =957, ncol=20)
+for (i in 1:20){
+  smp_size = floor(0.75 * nrow(data2))
+  set.seed(10+200*i)
+  train_ind = sample(seq_len(nrow(data2)),size = smp_size) 
+  TabTrain =data2[train_ind,] 
+  TabTest=data2[-train_ind,]
+  prediction <- FNN::knn.reg(TabTrain[,c(1,3:20)],TabTest[,c(1,3:20)], TabTrain$CO..ppm., k = 25, algorithm="kd_tree")  
+  Y__predicted <- prediction$pred
+  Y_reel=TabTest$CO..ppm.
+  residu_KNN[,i]=Y_reel-Y_predicted
+  RMSE_KNN[i]=sqrt(((sum(residu_KNN[,i])**2))/length(TabTest))
+}
+
+group=c("stepwise","Lasso","Ridge","ElasticNet","GLasso","KNN")
+boxplot(RMSE_stepwise,RMSE_lasso,RMSE_ridge,RMSE_EN,RMSE_gl,RMSE_KNN,names=group,notch=F, outlier.color = "red", outlier.shape = 8, outlier.size = 4, col=(c("darkgreen","purple","pink","blue","red","grey")))
+grid()
+```
+
+
